@@ -1,28 +1,15 @@
 module ReviewMappingHelper
+  # Renders the report table header
   def create_report_table_header(headers = {})
     render partial: 'report_table_header', locals: { headers: headers }
   end
 
-  #
-  # gets the response map data such as reviewer id, reviewed object id and type for the review report
-  #
   def get_data_for_review_report(reviewed_object_id, reviewer_id, type)
-    rspan = 0
-    (1..@assignment.num_review_rounds).each { |round| instance_variable_set('@review_in_round_' + round.to_s, 0) }
-
-    response_maps = ResponseMap.where(['reviewed_object_id = ? AND reviewer_id = ? AND type = ?', reviewed_object_id, reviewer_id, type])
-    response_maps.each do |ri|
-      rspan += 1 if Team.exists?(id: ri.reviewee_id)
-      responses = ri.response
-      (1..@assignment.num_review_rounds).each do |round|
-        instance_variable_set('@review_in_round_' + round.to_s, instance_variable_get('@review_in_round_' + round.to_s) + 1) if responses.exists?(round: round)
-      end
-    end
-    [response_maps, rspan]
+    ReviewReportService.new(@assignment).get_data_for_review_report(reviewed_object_id, reviewer_id, type)
   end
 
   #
-  # gets the team name's color according to review and assignment submission status
+  # Gets the team name's color according to review and assignment submission status
   #
   def get_team_color(response_map)
     # Storing redundantly computed value in a variable
@@ -138,17 +125,7 @@ module ReviewMappingHelper
     team_reviewed_link_name
   end
 
-  # if the current stage is "submission" or "review", function returns the current round number otherwise,
-  # if the current stage is "Finished" or "metareview", function returns the number of rounds of review completed.
-  # def get_current_round(reviewer_id)
-  #   user_id = Participant.find(reviewer_id).user.id
-  #   topic_id = SignedUpTeam.topic_id(@assignment.id, user_id)
-  #   @assignment.number_of_current_round(topic_id)
-  #   @assignment.num_review_rounds if @assignment.get_current_stage(topic_id) == "Finished" || @assignment.get_current_stage(topic_id) == "metareview"
-  # end
-
   # gets the review score awarded based on each round of the review
-
   def get_awarded_review_score(reviewer_id, team_id)
     # Storing redundantly computed value in num_rounds variable
     num_rounds = @assignment.num_review_rounds
@@ -223,65 +200,12 @@ module ReviewMappingHelper
 
   # The data of all the reviews is displayed in the form of a bar chart
   def display_volume_metric_chart(reviewer)
-    labels, reviewer_data, all_reviewers_data = initialize_chart_elements(reviewer)
-    data = {
-      labels: labels,
-      datasets: [
-        {
-          label: 'vol.',
-          backgroundColor: 'rgba(255,99,132,0.8)',
-          borderWidth: 1,
-          data: reviewer_data,
-          yAxisID: 'bar-y-axis1'
-        },
-        {
-          label: 'avg. vol.',
-          backgroundColor: 'rgba(255,206,86,0.8)',
-          borderWidth: 1,
-          data: all_reviewers_data,
-          yAxisID: 'bar-y-axis2'
-        }
-      ]
-    }
-    options = {
-      legend: {
-        position: 'top',
-        labels: {
-          usePointStyle: true
-        }
-      },
-      width: '200',
-      height: '225',
-      scales: {
-        yAxes: [{
-          stacked: true,
-          id: 'bar-y-axis1',
-          barThickness: 10
-        }, {
-          display: false,
-          stacked: true,
-          id: 'bar-y-axis2',
-          barThickness: 15,
-          type: 'category',
-          categoryPercentage: 0.8,
-          barPercentage: 0.9,
-          gridLines: {
-            offsetGridLines: true
-          }
-        }],
-        xAxes: [{
-          stacked: false,
-          ticks: {
-            beginAtZero: true,
-            stepSize: 50,
-            max: 400
-          }
-        }]
-      }
-    }
+    chart_service = ChartDataService.new(reviewer, @assignment)
+    data = chart_service.volume_metric_chart_data
+    options = chart_service.volume_metric_chart_options
     bar_chart data, options
   end
-
+  
   # E2082 Generate chart for review tagging time intervals
   def display_tagging_interval_chart(intervals)
     # if someone did not do any tagging in 30 seconds, then ignore this interval
